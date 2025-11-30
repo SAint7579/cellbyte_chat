@@ -9,6 +9,7 @@ A conversational AI chatbot that enables natural language interaction with CSV d
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                              USER INTERFACE                             │
+│                            (Next.js Frontend)                           │
 └─────────────────────────────────────────────────────────────────────────┘
                                      │
                                      ▼
@@ -17,131 +18,244 @@ A conversational AI chatbot that enables natural language interaction with CSV d
 │                                                                         │
 │  Orchestrates all tools, maintains conversation state, routes queries   │
 └─────────────────────────────────────────────────────────────────────────┘
-          │                    │                    │                │
-          ▼                    ▼                    ▼                ▼
+          │                    │                    │                
+          ▼                    ▼                    ▼                
     ┌──────────┐        ┌──────────┐        ┌──────────┐      ┌──────────┐
-    │ RAG Tool │        │ Plotter  │        │Analytics │      │Web Search│
-    │          │        │   Tool   │        │   Tool   │      │   Tool   │
+    │ RAG Tool │        │ Plotter  │        │Analytics │      │~~Web~~   │
+    │ (Search) │        │   Tool   │        │   Tool   │      │~~Search~~│
     └──────────┘        └──────────┘        └──────────┘      └──────────┘
+         ✅                  ✅                  ✅               🚫 TODO
 ```
 
 ---
 
-## Core Framework
+## Quick Start
 
-- **LangChain**: Foundation for LLM interactions and tool management
-- **LangGraph**: Agent orchestration and state management
+### Prerequisites
 
----
+- Python 3.11+
+- Node.js 20+
+- OpenAI API Key
 
-## RAG Framework
+### Option 1: Run Locally (Development)
 
-### CSV Ingestion Pipeline
+```bash
+# Clone the repository
+git clone <repo-url>
+cd cellbyte_chat
 
-Each CSV file is processed by a **non-agentic LLM** to generate:
+# Create .env file
+echo "OPENAI_API_KEY=your-key-here" > .env
 
-1. **Vectorstore**: Embeddings for semantic search over CSV content
-2. **Metadata**: Structured context about the file (columns, data types, summary statistics, etc.)
+# Backend setup
+pip install -r requirements.txt
+cd backend
+uvicorn api:app --reload --port 8000
 
-> **Design Choice**: Using a dedicated non-agentic LLM to parase the doc and generate a metadata, that can be used to give the main one more context about the data it fetches. Main question is: How to give LLM a single VecStore with all csv and the context separated? Maybe I pass context through an additional system promtp when the chat is initiated.
-
-### RAG Tool Architecture
-
-- The parent agent has access to RAG as a tool
-- Each RAG tool instance is scoped to a specific CSV file
-- Tool includes file metadata for context-aware retrieval
-- Enables the agent to "know what it knows" about available data
-
----
-
-## Non-RAG Agentic Tools
-
-### 1. Plotter Utility
-
-**Purpose**: Generate visualizations from CSV data
-
-**Flow**:
-```
-Parent Agent
-    │
-    ├─► [Plot Prompt + Data]
-    │
-    ▼
-Plot LLM (Non-Agentic)
-    │
-    ├─► Generates Plotly code / HTML
-    │
-    ▼
-Parent Agent
-    │
-    ├─► Returns HTML visualization
-    │
-    ▼
-User Interface
+# Frontend setup (new terminal)
+cd frontend
+npm install
+npm run dev
 ```
 
-**Capabilities**:
-- Bar charts, line graphs, scatter plots, histograms
-- Heatmaps, box plots, pie charts
-- Custom visualizations based on natural language requests
+Access:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
-**Output Format**: HTML (Plotly.js) for interactive, embeddable charts
+### Option 2: Run with Docker (Production)
 
----
+```bash
+# Clone and setup
+git clone <repo-url>
+cd cellbyte_chat
 
-### 2. Analytics Tool
+# Create .env file
+echo "OPENAI_API_KEY=your-key-here" > .env
 
-**Purpose**: Perform statistical analysis on CSV data
+# Build and run
+docker-compose up --build
 
-**Flow**:
-```
-Parent Agent
-    │
-    ├─► [Analytics Prompt + Data]
-    │
-    ▼
-Analytics LLM (Non-Agentic)
-    │
-    ├─► Generates Python code (SciPy/NumPy/Pandas)
-    │
-    ▼
-Code Execution Environment
-    │
-    ├─► Returns computed results
-    │
-    ▼
-Parent Agent
-    │
-    ├─► Interprets and formats results
-    │
-    ▼
-User Interface
+# Or run in background
+docker-compose up -d --build
 ```
 
-**Key Assumption**: 
-> ⚠️ **LLMs DO NOT perform numerical calculations directly.** All computations are delegated to proper numerical libraries (SciPy, NumPy, Pandas). The LLM's role is purely code generation.
+Access:
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:8000
 
-**Capabilities**:
-- Descriptive statistics (mean, median, std, etc.)
-- Correlation analysis
-- Hypothesis testing
-- Regression analysis
-- Distribution fitting
-
----
-
-### 3. Web Search Tool
-
-**Purpose**: Augment responses with external knowledge
-
-**Use Cases**:
-- Looking up domain-specific terminology
-- Finding context for data interpretation
-- Answering questions that extend beyond the CSV content
+Data persists in Docker volumes:
+- `cellbyte_database` - FAISS index and file metadata
+- `cellbyte_history` - Chat history
+- `cellbyte_logs` - Application logs
 
 ---
 
-## Key Design Assumptions
+## Features
+
+### 1. CSV Ingestion & RAG Search
+
+Upload CSV/TSV/Excel files. The system automatically:
+- Generates LLM-powered descriptions
+- Creates FAISS vector embeddings
+- Extracts metadata (columns, types, statistics)
+
+### 2. Visualization (Plotter Tool)
+
+Ask for charts in natural language:
+- "Show me a pie chart of additional benefit distribution"
+- "Create a box plot of yearly costs by brand"
+
+![Plotting Example](readme_images/plotting.png)
+
+### 3. Analytics (Analyze Tool)
+
+Ask for statistics and calculations:
+- "What is the median yearly therapy cost?"
+- "Calculate correlation between price and patient population"
+- "Find all active substances that appear in comparative therapies"
+
+![Analytics Example](readme_images/analytics.png)
+
+---
+
+## Tool Flows
+
+### RAG Search Tool Flow
+
+```
+User Query: "Find drugs with major additional benefit"
+    │
+    ▼
+┌─────────────────────────────┐
+│       Parent Agent          │
+│  (Decides to use RAG tool)  │
+└─────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────┐
+│      FAISS Vector Store     │
+│   Semantic similarity search │
+└─────────────────────────────┘
+    │
+    ▼
+Returns top-k matching rows
+    │
+    ▼
+Agent summarizes findings for user
+```
+
+### Plotter Tool Flow
+
+```
+User Query: "Create a pie chart of benefit distribution"
+    │
+    ▼
+┌─────────────────────────────┐
+│       Parent Agent          │
+│ (Decides to use Plot tool)  │
+└─────────────────────────────┘
+    │
+    ├─► [Plot Request + Dataset Context]
+    │
+    ▼
+┌─────────────────────────────┐
+│   Plot LLM (Non-Agentic)    │
+│   Generates Plotly code     │
+└─────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────┐
+│   Code Execution (exec)     │
+│   Runs generated Python     │
+└─────────────────────────────┘
+    │
+    ├─► Success? Return HTML
+    │
+    ├─► Error? Feed back to LLM (retry up to 3x)
+    │
+    ▼
+┌─────────────────────────────┐
+│      User Interface         │
+│  Renders interactive chart  │
+└─────────────────────────────┘
+```
+
+### Analytics Tool Flow
+
+```
+User Query: "What is the median yearly therapy cost?"
+    │
+    ▼
+┌─────────────────────────────┐
+│       Parent Agent          │
+│(Decides to use Analyze tool)│
+└─────────────────────────────┘
+    │
+    ├─► [Analytics Request + Dataset Context]
+    │
+    ▼
+┌─────────────────────────────┐
+│ Analytics LLM (Non-Agentic) │
+│ Generates pandas/scipy code │
+└─────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────┐
+│   Code Execution (exec)     │
+│   Available: pd, np, scipy, │
+│   sklearn, re               │
+└─────────────────────────────┘
+    │
+    ├─► Success? Return results dict
+    │
+    ├─► Error? Feed back to LLM (retry up to 3x)
+    │
+    ▼
+┌─────────────────────────────┐
+│       Parent Agent          │
+│  Formats results for user   │
+└─────────────────────────────┘
+```
+
+> ⚠️ **Key Principle**: LLMs DO NOT perform numerical calculations directly. All computations are delegated to proper libraries (Pandas, NumPy, SciPy). The LLM's role is purely code generation.
+
+---
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| **Agent Framework** | LangChain + LangGraph |
+| **LLM** | OpenAI GPT-4o / GPT-5.1 |
+| **Embeddings** | OpenAI text-embedding-3-large |
+| **Vector Store** | FAISS |
+| **Backend** | FastAPI + Uvicorn |
+| **Frontend** | Next.js 14 + React |
+| **Visualization** | Plotly |
+| **Analytics** | Pandas, NumPy, SciPy, scikit-learn |
+| **Containerization** | Docker + Docker Compose |
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/healthz` | Health check |
+| `POST` | `/files/ingest` | Upload and ingest a CSV file |
+| `GET` | `/files` | List all ingested files |
+| `DELETE` | `/files/{filename}` | Delete a file |
+| `POST` | `/chat` | Send message to agent |
+| `POST` | `/chat/refresh` | Refresh agent metadata |
+| `GET` | `/history` | List all chat sessions |
+| `GET` | `/history/{id}` | Get specific chat history |
+| `PUT` | `/history/{id}` | Update chat history |
+| `DELETE` | `/history/{id}` | Delete chat history |
+
+---
+
+## Assumptions
 
 ### LLM Role Separation
 
@@ -152,98 +266,103 @@ User Interface
 | Plot LLM | Non-Agentic | Visualization code generation |
 | Analytics LLM | Non-Agentic | Statistical code generation |
 
-### Why Non-Agentic Sub-LLMs?
+### Design Principles
 
-1. **Predictability**: No recursive tool calls or unexpected behaviors
-2. **Performance**: Lower latency without agent loop overhead
-3. **Focused Output**: Single-purpose prompts yield better results
-4. **Cost Efficiency**: Simpler chains = fewer tokens
+1. **LLMs don't calculate** - All numerical computations are delegated to Python libraries (Pandas, NumPy, SciPy). LLMs only generate code.
 
-### Data Flow Principles
+2. **Non-agentic sub-LLMs** - Plotter and Analytics tools use single-shot LLM calls (not agents) for:
+   - Predictability: No recursive tool calls
+   - Performance: Lower latency
+   - Cost efficiency: Fewer tokens
 
-1. **Data stays structured**: CSVs are passed as structured data, not raw text
-2. **Code over calculation**: LLMs generate executable code, not numerical results
-3. **HTML as visualization format**: Universal, embeddable, interactive
+3. **Retry with feedback** - When generated code fails, the error is fed back to the LLM to fix (up to 3 attempts).
+
+4. **Data stays structured** - CSVs are passed as DataFrames, not raw text.
+
+5. **HTML for visualizations** - Plotly charts are returned as embeddable HTML.
+
+---
+
+## Potential Improvements
+
+### Short-term
+
+- [ ] Add web search tool for external knowledge augmentation
+- [ ] Support more file formats (PDF tables, DOCX)
+- [ ] Add export functionality (download charts, reports)
+- [ ] Improve error messages shown to users
+- [ ] Add streaming responses for better UX
+
+### Medium-term
+
+- [ ] Multi-file analysis (JOIN across CSVs)
+- [ ] Save and share visualizations
+- [ ] User authentication and multi-tenancy
+- [ ] Custom prompt templates per use case
+- [ ] Caching for repeated queries
+
+### Long-term
+
+- [ ] Fine-tuned models for domain-specific analysis
+- [ ] Real-time data connections (databases, APIs)
+- [ ] Collaborative features (shared workspaces)
+- [ ] Plugin system for custom tools
 
 ---
 
 ## Unclear Requirements / Open Questions
 
-### Document Transformation Feature
+### Document Transformation
 
-**Question**: What does "transforming outputs" mean in this context?
+**Question**: Should the system support document format conversion?
 
-Two possible interpretations:
+| Option | Description | Example |
+|--------|-------------|---------|
+| **Output transformation** | Convert LLM outputs to different formats | "Export this as PDF" |
+| **Input parsing** | Parse non-CSV docs into analyzable structure | Upload PDF with tables → extract to CSV |
 
-#### Option A: Output Transformation (Post-LLM)
-Converting LLM-generated outputs to different formats without re-parsing the original CSV.
+### Multi-Document Analysis
 
-```
-LLM Response (Markdown/HTML Report)
-    │
-    ▼
-Transformation Layer
-    │
-    ├─► PDF → DOCX
-    ├─► Markdown → PDF
-    ├─► Translation (EN → ES, etc.)
-    │
-    ▼
-User receives transformed output
-```
+- Should users be able to JOIN data across multiple CSVs?
+- How to handle conflicting column names?
+- What's the UX for specifying relationships?
 
-**Use case**: User asks for a report, then requests "give me that as a Word doc" or "translate to Spanish"
+### Non-CSV Documents
 
-#### Option B: Input Parsing (Pre-LLM)
-Converting non-CSV documents INTO parsable structures so the LLM can analyze them.
-
-```
-Non-CSV Document (PDF, DOCX, Images)
-    │
-    ▼
-Marker / Document Parser
-    │
-    ├─► Extracts text, tables, structure
-    ├─► Converts to CSV / structured format
-    │
-    ▼
-Now analyzable by the main pipeline
-```
-
-**Use case**: User uploads a PDF report with tables → system extracts data → LLM can now query it
+| Category | Current Support | Future? |
+|----------|-----------------|---------|
+| CSV/TSV | ✅ Full support | - |
+| Excel (.xlsx, .xls) | ✅ Full support | - |
+| PDF with tables | ❌ | Marker integration |
+| Word documents | ❌ | Marker integration |
+| Images with tables | ❌ | OCR + Marker |
 
 ---
 
-### Two Document Categories
+## Project Structure
 
-| Category | Description | Processing |
-|----------|-------------|------------|
-| **CSV Docs** | Primary data sources | Direct vectorstore + metadata pipeline |
-| **Non-CSV Docs** | PDFs, DOCX, images with tables | Marker → structured extraction → then standard pipeline |
-
-**Potential Tool**: [Marker](https://github.com/VikParuchuri/marker) for document parsing
-
-**Open Questions**:
-- Do we support both A and B?
-- Should non-CSV docs be first-class citizens or just "converted to CSV"?
-- How to handle mixed documents (PDF with both text narrative AND data tables)?
-- Translation: LLM-based or dedicated translation API?
-
----
-
-## Tech Stack (Planned)
-
-- **Framework**: LangChain + LangGraph
-- **Embeddings**: GPTs Large model
-- **Vector Store**: FAISS
-- **Visualization**: Plotly
-- **Analytics**: Pandas, NumPy, SciPy (more to be thought off)
-- **Web Search**: DuckDuckGo's existing tools should be ok.
-
----
-
-## Project Status
-
-🚧 **In Development**
-
+```
+cellbyte_chat/
+├── backend/
+│   ├── api.py                    # FastAPI endpoints
+│   └── src/
+│       ├── agent.py              # LangGraph agent
+│       ├── general_utils/        # Shared utilities
+│       │   ├── logger.py
+│       │   └── file_utils.py
+│       └── llm_utils/            # LLM-specific code
+│           ├── csv_ingestion.py  # File ingestion & FAISS
+│           ├── plotting_utils.py # Chart generation
+│           ├── analytics_utils.py# Statistical analysis
+│           └── tools.py          # Agent tools
+├── frontend/
+│   ├── app/                      # Next.js pages
+│   ├── components/               # React components
+│   └── lib/                      # API client & types
+├── database/                     # FAISS index & metadata
+├── history/                      # Chat history JSON files
+├── Dockerfile
+├── docker-compose.yml
+└── requirements.txt
+```
 
