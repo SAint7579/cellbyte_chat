@@ -66,6 +66,23 @@ def get_csv_metadata() -> dict:
     return _load_metadata()
 
 
+def get_file_metadata(filename: str) -> dict | None:
+    """
+    Get metadata for a specific file.
+    
+    Args:
+        filename: Name of the file
+        
+    Returns:
+        Dict with file metadata or None if not found
+    """
+    metadata = _load_metadata()
+    for f in metadata.get("files", []):
+        if f["name"] == filename:
+            return f
+    return None
+
+
 # =============================================================================
 # LLM-based Description Generation
 # =============================================================================

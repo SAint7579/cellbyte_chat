@@ -16,6 +16,7 @@ from general_utils import (
     get_dataset_context,
     format_context_for_prompt,
 )
+from .csv_ingestion import get_file_metadata
 
 logger = get_logger("plotting")
 
@@ -69,8 +70,11 @@ def create_plot_from_request(plot_request: str, filename: str) -> tuple[str, str
     
     logger.info(f"Dataset: {df.shape[0]} rows, {df.shape[1]} columns")
     
+    # Get file metadata (includes delimiter, file_type)
+    file_metadata = get_file_metadata(filename)
+    
     # Build context and initial prompt
-    context_str = format_context_for_prompt(get_dataset_context(df, filename))
+    context_str = format_context_for_prompt(get_dataset_context(df, filename, file_metadata))
     
     system_prompt = f"""You are a Python data visualization expert. Generate Plotly code.
 

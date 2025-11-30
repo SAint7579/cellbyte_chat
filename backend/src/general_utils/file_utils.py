@@ -180,18 +180,23 @@ def list_available_files() -> list[str]:
 # Dataset Context (for LLM prompts)
 # =============================================================================
 
-def get_dataset_context(df: pd.DataFrame, filename: str = "dataset") -> dict:
+def get_dataset_context(df: pd.DataFrame, filename: str = "dataset", file_metadata: dict | None = None) -> dict:
     """
-    Get dataset context for LLM prompts (columns info, sample data, shape).
+    Get dataset context for LLM prompts (columns info, sample data, shape, file info).
     
     This standardized context is used by plotting, analytics, and other LLM tools.
     
     Args:
         df: The DataFrame to analyze
         filename: Name of the file (for logging)
+        file_metadata: Optional metadata dict from get_file_metadata() containing
+                      file_type, delimiter, description, etc.
         
     Returns:
         Dict with:
+        - filename: Name of the file
+        - file_type: Type of file (csv, tsv, excel)
+        - delimiter: Delimiter used (for csv/tsv)
         - shape: {"rows": int, "columns": int}
         - columns: List of column info dicts
         - head_5: First 5 rows as list of dicts
@@ -219,11 +224,16 @@ def get_dataset_context(df: pd.DataFrame, filename: str = "dataset") -> dict:
     
     logger.debug(f"Context: {df.shape[0]} rows, {df.shape[1]} columns")
     
-    return {
+    context = {
+        "filename": filename,
+        "file_type": file_metadata.get("file_type") if file_metadata else None,
+        "delimiter": file_metadata.get("delimiter") if file_metadata else None,
         "shape": {"rows": df.shape[0], "columns": df.shape[1]},
         "columns": columns_info,
         "head_5": head_5
     }
+    
+    return context
 
 
 def format_context_for_prompt(context: dict) -> str:
@@ -236,6 +246,22 @@ def format_context_for_prompt(context: dict) -> str:
     Returns:
         Formatted string ready to insert into prompts
     """
+    # File info
+    filename = context.get("filename", "unknown")
+    file_type = context.get("file_type", "unknown")
+    delimiter = context.get("delimiter")
+    
+    # Format file type with delimiter info
+    if file_type == "csv" and delimiter:
+        delimiter_display = repr(delimiter)  # Show '\t' as '\\t', ',' as ','
+        file_info = f"CSV (delimiter: {delimiter_display})"
+    elif file_type == "tsv":
+        file_info = "TSV (tab-separated)"
+    elif file_type == "excel":
+        file_info = "Excel"
+    else:
+        file_info = file_type or "unknown"
+    
     # Format columns info
     columns_str = "\n".join([
         f"  - {c['name']} ({c['dtype']}): {c['unique_count']} unique, samples: {c['samples']}"
@@ -255,6 +281,8 @@ def format_context_for_prompt(context: dict) -> str:
         head_str = "No sample data available"
     
     return f"""DATASET INFO:
+- File: {filename}
+- Format: {file_info}
 - Shape: {context['shape']['rows']} rows × {context['shape']['columns']} columns
 - Columns:
 {columns_str}

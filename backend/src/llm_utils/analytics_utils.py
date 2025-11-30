@@ -17,6 +17,7 @@ from general_utils import (
     format_context_for_prompt,
     get_numeric_columns,
 )
+from .csv_ingestion import get_file_metadata
 
 logger = get_logger("analytics")
 
@@ -75,8 +76,11 @@ def run_analytics(analytics_request: str, filename: str) -> dict:
     
     logger.info(f"Dataset: {df.shape[0]} rows, {df.shape[1]} columns")
     
+    # Get file metadata (includes delimiter, file_type)
+    file_metadata = get_file_metadata(filename)
+    
     # Build context and initial prompt
-    context_str = format_context_for_prompt(get_dataset_context(df, filename))
+    context_str = format_context_for_prompt(get_dataset_context(df, filename, file_metadata))
     
     system_prompt = f"""You are a Python data analytics expert. Generate analysis code.
 
