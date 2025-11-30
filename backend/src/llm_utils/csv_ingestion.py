@@ -1,6 +1,11 @@
+"""
+CSV Ingestion
+
+Functions for ingesting CSV files into the FAISS vectorstore and managing metadata.
+"""
+
 import os
 import json
-import csv
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -14,125 +19,28 @@ load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 
-from general_utils import get_logger
+from general_utils import (
+    get_logger,
+    # File utilities
+    read_tabular_file,
+    load_dataset,
+    list_available_files,
+    # Paths
+    DATABASE_DIR,
+    FAISS_DIR,
+    FILES_DIR,
+    METADATA_FILE,
+    ensure_dirs,
+)
 
 logger = get_logger("csv_ingestion")
 
 
-def _detect_delimiter(file_path: str) -> str:
-    """
-    Detect the delimiter used in a CSV/TSV file.
-    
-    Args:
-        file_path: Path to the file
-        
-    Returns:
-        Detected delimiter character (defaults to ',' if detection fails)
-    """
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            sample = f.read(8192)
-            sniffer = csv.Sniffer()
-            dialect = sniffer.sniff(sample, delimiters=',;\t|')
-            logger.debug(f"Detected delimiter: '{dialect.delimiter}'")
-            return dialect.delimiter
-    except Exception as e:
-        logger.warning(f"Delimiter detection failed: {e}, defaulting to ','")
-        return ','
-
-
-def read_tabular_file(file_path: str) -> tuple[pd.DataFrame, dict]:
-    """
-    Read a tabular file (CSV, TSV, Excel) and return DataFrame with file info.
-    
-    Supports:
-    - CSV files (.csv) with auto-detected delimiters (, ; | \\t)
-    - TSV files (.tsv, .txt with tabs)
-    - Excel files (.xlsx, .xls)
-    
-    Args:
-        file_path: Path to the tabular file
-        
-    Returns:
-        Tuple of (DataFrame, file_info dict with 'type' and 'delimiter')
-        
-    Raises:
-        ValueError: If file type is not supported
-    """
-    logger.info(f"Reading tabular file: {file_path}")
-    path = Path(file_path)
-    extension = path.suffix.lower()
-    
-    file_info = {
-        "type": None,
-        "delimiter": None,
-        "extension": extension,
-    }
-    
-    # Excel files
-    if extension in ['.xlsx', '.xls']:
-        try:
-            # Try reading first sheet by default
-            df = pd.read_excel(file_path, engine='openpyxl' if extension == '.xlsx' else 'xlrd')
-            file_info["type"] = "excel"
-            logger.info(f"Read Excel file: {df.shape[0]} rows, {df.shape[1]} columns")
-            return df, file_info
-        except Exception as e:
-            logger.error(f"Failed to read Excel file: {e}")
-            raise ValueError(f"Failed to read Excel file: {str(e)}")
-    
-    # TSV files (explicit .tsv extension)
-    if extension == '.tsv':
-        df = pd.read_csv(file_path, delimiter='\t')
-        file_info["type"] = "tsv"
-        file_info["delimiter"] = '\t'
-        logger.info(f"Read TSV file: {df.shape[0]} rows, {df.shape[1]} columns")
-        return df, file_info
-    
-    # CSV and other text-based files - auto-detect delimiter
-    if extension in ['.csv', '.txt', '']:
-        delimiter = _detect_delimiter(file_path)
-        df = pd.read_csv(file_path, delimiter=delimiter)
-        
-        # Determine type based on delimiter
-        if delimiter == '\t':
-            file_info["type"] = "tsv"
-        else:
-            file_info["type"] = "csv"
-        file_info["delimiter"] = delimiter
-        
-        logger.info(f"Read CSV file: {df.shape[0]} rows, {df.shape[1]} columns, delimiter='{delimiter}'")
-        return df, file_info
-    
-    # Unsupported extension - try as CSV anyway
-    try:
-        delimiter = _detect_delimiter(file_path)
-        df = pd.read_csv(file_path, delimiter=delimiter)
-        file_info["type"] = "csv"
-        file_info["delimiter"] = delimiter
-        logger.info(f"Read file as CSV: {df.shape[0]} rows, {df.shape[1]} columns")
-        return df, file_info
-    except Exception as e:
-        logger.error(f"Unsupported file type '{extension}': {e}")
-        raise ValueError(f"Unsupported file type '{extension}': {str(e)}")
-
-# Paths
-BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
-DATABASE_DIR = BASE_DIR / "database"
-FAISS_DIR = DATABASE_DIR / "faiss_store"
-FILES_DIR = DATABASE_DIR / "files"  # Store original files for using with the plot code
-METADATA_FILE = DATABASE_DIR / "csv_metadata.json"
-
-
-def _ensure_dirs():
-    """Ensure database directories exist."""
-    DATABASE_DIR.mkdir(exist_ok=True)
-    FAISS_DIR.mkdir(exist_ok=True)
-    FILES_DIR.mkdir(exist_ok=True)
-
+# =============================================================================
+# Metadata Management
+# =============================================================================
 
 def _load_metadata() -> dict:
     """Load existing metadata from JSON file."""
@@ -147,6 +55,20 @@ def _save_metadata(metadata: dict):
     with open(METADATA_FILE, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=2, ensure_ascii=False)
 
+
+def get_csv_metadata() -> dict:
+    """
+    Get all CSV metadata.
+    
+    Returns:
+        Dict containing all file metadata
+    """
+    return _load_metadata()
+
+
+# =============================================================================
+# LLM-based Description Generation
+# =============================================================================
 
 def _generate_csv_description(df: pd.DataFrame, filename: str) -> str:
     """
@@ -167,7 +89,6 @@ def _generate_csv_description(df: pd.DataFrame, filename: str) -> str:
         llm = ChatOpenAI(model=model_name, temperature=0)
         
         # Build a summary of the data for the LLM
-        # Safely get statistics
         try:
             stats_str = df.describe(include='all').to_string()
         except Exception:
@@ -210,6 +131,10 @@ Provide a clear, structured description in 2-3 paragraphs."""
         return f"[Auto-generated description failed: {str(e)}] File contains {len(df)} rows and {len(df.columns)} columns: {', '.join(df.columns.tolist())}"
 
 
+# =============================================================================
+# Document Conversion for Vectorstore
+# =============================================================================
+
 def _csv_to_documents(df: pd.DataFrame, filename: str) -> list[Document]:
     """
     Convert CSV rows to LangChain Documents for vectorstore.
@@ -224,9 +149,7 @@ def _csv_to_documents(df: pd.DataFrame, filename: str) -> list[Document]:
     logger.debug(f"Converting {len(df)} rows to documents")
     documents = []
     
-    # Convert each row to a document
     for idx, row in df.iterrows():
-        # Create a text representation of the row
         row_text = " | ".join([f"{col}: {val}" for col, val in row.items()])
         
         doc = Document(
@@ -242,6 +165,10 @@ def _csv_to_documents(df: pd.DataFrame, filename: str) -> list[Document]:
     return documents
 
 
+# =============================================================================
+# File Ingestion
+# =============================================================================
+
 def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
     """
     Ingest a tabular file (CSV, TSV, Excel): generate description, store in FAISS, save metadata.
@@ -256,7 +183,7 @@ def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
     logger.info(f"=== Starting file ingestion ===")
     logger.info(f"File: {file_path}")
     
-    _ensure_dirs()
+    ensure_dirs()
     
     # Read the file with auto-detection
     df, file_info = read_tabular_file(file_path)
@@ -291,7 +218,6 @@ def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
     
     if faiss_index_path.exists():
         logger.info("Loading existing FAISS index...")
-        # Load existing and add new documents
         vectorstore = FAISS.load_local(
             str(FAISS_DIR), 
             embeddings,
@@ -301,7 +227,6 @@ def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
         vectorstore.add_documents(documents)
     else:
         logger.info(f"Creating new FAISS index with {len(documents)} documents...")
-        # Create new vectorstore
         vectorstore = FAISS.from_documents(documents, embeddings)
     
     # Save vectorstore
@@ -311,13 +236,12 @@ def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
     # Update metadata
     metadata = _load_metadata()
     
-    # Check if file already exists in metadata (update it)
     existing_idx = next(
         (i for i, f in enumerate(metadata["files"]) if f["name"] == filename),
         None
     )
     
-    # Safely get describe stats (replace NaN/Inf with empty string for JSON compatibility)
+    # Safely get describe stats
     try:
         describe_df = df.describe(include='all').fillna("")
         describe_df = describe_df.replace([float('inf'), float('-inf')], "")
@@ -368,15 +292,9 @@ def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
 ingest_csv = ingest_file
 
 
-def get_csv_metadata() -> dict:
-    """
-    Get all CSV metadata.
-    
-    Returns:
-        Dict containing all file metadata
-    """
-    return _load_metadata()
-
+# =============================================================================
+# Vectorstore Access
+# =============================================================================
 
 def get_vectorstore() -> Optional[FAISS]:
     """
@@ -402,45 +320,9 @@ def get_vectorstore() -> Optional[FAISS]:
     return vectorstore
 
 
-def load_dataset(filename: str) -> Optional[pd.DataFrame]:
-    """
-    Load a dataset from the stored files.
-    
-    Args:
-        filename: Name of the file to load
-        
-    Returns:
-        DataFrame or None if file not found
-    """
-    logger.debug(f"Loading dataset: {filename}")
-    file_path = FILES_DIR / filename
-    
-    if not file_path.exists():
-        logger.warning(f"File not found: {file_path}")
-        return None
-    
-    try:
-        df, _ = read_tabular_file(str(file_path))
-        logger.debug(f"Dataset loaded: {df.shape[0]} rows, {df.shape[1]} columns")
-        return df
-    except Exception as e:
-        logger.error(f"Failed to load dataset: {e}")
-        return None
-
-
-def list_available_files() -> list[str]:
-    """
-    List all available dataset files.
-    
-    Returns:
-        List of filenames
-    """
-    if not FILES_DIR.exists():
-        return []
-    files = [f.name for f in FILES_DIR.iterdir() if f.is_file()]
-    logger.debug(f"Available files: {files}")
-    return files
-
+# =============================================================================
+# File Deletion
+# =============================================================================
 
 def delete_file(filename: str) -> dict:
     """
@@ -458,7 +340,6 @@ def delete_file(filename: str) -> dict:
     logger.info(f"Deleting file: {filename}")
     metadata = _load_metadata()
     
-    # Find the file in metadata
     file_exists = any(f["name"] == filename for f in metadata.get("files", []))
     
     if not file_exists:
@@ -482,8 +363,6 @@ def delete_file(filename: str) -> dict:
             allow_dangerous_deserialization=True
         )
         
-        # Get all documents and filter out the deleted file's documents
-        # Note: FAISS doesn't support direct deletion, so we rebuild
         docstore = vectorstore.docstore
         index_to_id = vectorstore.index_to_docstore_id
         

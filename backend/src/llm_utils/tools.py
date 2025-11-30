@@ -5,7 +5,7 @@ Collection of tools available to the CellByte agent.
 """
 
 from langchain_core.tools import tool
-from .csv_ingestion import get_vectorstore, list_available_files
+from .csv_ingestion import get_vectorstore
 from .plotting_utils import create_plot_from_request
 from general_utils import get_logger
 
