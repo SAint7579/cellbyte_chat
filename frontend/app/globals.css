@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #141414;
+  --card-hover: #1a1a1a;
+  --border: #2a2a2a;
+  --accent: #3b82f6;
+  --accent-muted: #1e3a5f;
+  --success: #22c55e;
+  --warning: #eab308;
+  --error: #ef4444;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', sans-serif;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3a3a3a;
+}
+
+/* Custom Classes */
+.chat-container {
+  height: calc(100vh - 120px);
+}
+
+.tool-call-block {
+  background: linear-gradient(135deg, #1e3a5f 0%, #1a1a2e 100%);
+  border-left: 3px solid var(--accent);
+}
+
+.message-user {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.message-assistant {
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+.file-upload-zone {
+  border: 2px dashed var(--border);
+  transition: all 0.2s ease;
+}
+
+.file-upload-zone:hover,
+.file-upload-zone.dragging {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+/* Animations */
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.loading-dots span {
+  animation: pulse-subtle 1.4s infinite;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.loading-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
