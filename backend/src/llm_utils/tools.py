@@ -7,6 +7,7 @@ Collection of tools available to the CellByte agent.
 from langchain_core.tools import tool
 from .csv_ingestion import get_vectorstore
 from .plotting_utils import create_plot_from_request
+from .analytics_utils import run_analytics
 from general_utils import get_logger
 
 logger = get_logger("tools")
@@ -15,16 +16,20 @@ logger = get_logger("tools")
 @tool
 def search_data(query: str) -> str:
     """
-    Search the CSV data for relevant information.
+    Search the CSV data for relevant information using semantic search.
     
-    Use this tool to find specific data points, rows, or information
-    from the ingested CSV files.
+    Use this tool to find specific rows, records, or text information
+    from the ingested CSV files. This is best for finding examples,
+    looking up specific entries, or exploring the data.
+    
+    NOTE: This tool returns sample rows, NOT calculations. For statistics
+    like mean, median, sum, count, correlations, etc., use analyze_data instead.
     
     Args:
         query: The search query describing what data to find
         
     Returns:
-        Relevant data from the CSV files
+        Relevant rows/records from the CSV files
     """
     logger.info(f"search_data called with query: {query}")
     
@@ -56,6 +61,61 @@ def search_data(query: str) -> str:
     except Exception as e:
         logger.error(f"search_data failed: {e}", exc_info=True)
         return f"Error searching data: {str(e)}"
+
+
+@tool
+def analyze_data(analysis_request: str, filename: str) -> str:
+    """
+    Perform statistical analysis or calculations on a CSV file.
+    
+    Use this tool when the user asks for:
+    - Statistics: mean, median, mode, min, max, sum, count, std, variance
+    - Aggregations: group by, value counts, distributions
+    - Correlations: correlation matrix, relationships between columns
+    - Comparisons: compare groups, t-tests, chi-square tests
+    - Data summaries: describe, info, missing values analysis
+    
+    This tool generates and executes Python/pandas code to compute the answer.
+    
+    Args:
+        analysis_request: Natural language description of the analysis
+                         (e.g., "calculate the median yearly_price_avg_today_apu")
+        filename: Name of the CSV file to analyze
+        
+    Returns:
+        Analysis results with summary and data
+    """
+    logger.info(f"analyze_data called - request: '{analysis_request}', file: '{filename}'")
+    
+    try:
+        result = run_analytics(analysis_request, filename)
+        
+        # Format the response
+        summary = result.get("summary", "Analysis completed.")
+        data = result.get("data", {})
+        
+        # Format data nicely
+        if isinstance(data, dict):
+            if len(data) <= 10:
+                data_str = "\n".join([f"  {k}: {v}" for k, v in data.items()])
+            else:
+                # Truncate if too many items
+                items = list(data.items())[:10]
+                data_str = "\n".join([f"  {k}: {v}" for k, v in items])
+                data_str += f"\n  ... and {len(data) - 10} more items"
+        else:
+            data_str = str(data)
+        
+        logger.info(f"Analysis completed: {summary[:100]}...")
+        
+        return f"**Analysis Result:**\n{summary}\n\n**Data:**\n{data_str}"
+    
+    except FileNotFoundError as e:
+        logger.error(f"File not found: {e}")
+        return str(e)
+    except Exception as e:
+        logger.error(f"analyze_data failed: {e}", exc_info=True)
+        return f"Error analyzing data: {str(e)}"
 
 
 @tool
@@ -97,4 +157,4 @@ def create_plot(plot_request: str, filename: str) -> str:
 
 
 # List of all available tools for easy import
-ALL_TOOLS = [search_data, create_plot]
+ALL_TOOLS = [search_data, analyze_data, create_plot]

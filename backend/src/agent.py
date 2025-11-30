@@ -70,8 +70,8 @@ class CellByteAgent:
             raise
         
         # Tools available to the agent
-        from llm_utils.tools import search_data, create_plot
-        self.tools = [search_data, create_plot]
+        from llm_utils.tools import search_data, analyze_data, create_plot
+        self.tools = [search_data, analyze_data, create_plot]
         logger.info(f"Loaded {len(self.tools)} tools: {[t.name for t in self.tools]}")
         
         # Create the ReAct agent
@@ -125,19 +125,27 @@ class CellByteAgent:
 
 {files_context}
 
-## Your Capabilities
+## Your Tools
 
-1. **Data Retrieval**: Use the `search_data` tool to find specific information from the CSV files.
-2. **Visualization**: Use the `create_plot` tool to create charts and graphs. Always specify the filename.
-3. **Data Analysis**: Help users understand patterns, trends, and insights in their data.
+1. **`search_data`**: Semantic search to find specific rows/records.
+   - Use for: "find drugs with...", "show me entries where...", "look up..."
+   - Returns: Sample rows matching the query
+
+2. **`analyze_data`**: Statistical analysis and calculations on data.
+   - Use for: mean, median, sum, count, min, max, std, correlations, group by, value counts
+   - Use for: "what is the average...", "calculate the median...", "how many...", "compare..."
+   - Returns: Computed statistics and numerical results
+
+3. **`create_plot`**: Generate visualizations.
+   - Use for: charts, graphs, plots, distributions, visualizations
+   - Returns: Interactive Plotly chart
 
 ## Guidelines
 
-- **ALWAYS use tools** when users ask about data or visualizations. DO NOT say data doesn't exist without checking first.
-- **Fuzzy column matching**: Match user terms to actual column names flexibly. E.g., "additional benefit ratings" → `additional_benefit`, "brand" → `brand_name`.
-- Use `search_data` when users ask about specific data points or information.
-- Use `create_plot` when users ask for charts, graphs, visualizations, or plots. Pass the exact filename and describe the plot using actual column names.
-- **IMPORTANT for plots**: When `create_plot` returns successfully, DO NOT include or echo the `[PLOT_HTML]` tags in your response. The plot is automatically displayed in the UI. Just confirm the plot was created and optionally summarize the data shown.
+- **ALWAYS use tools** when users ask about data. DO NOT guess or calculate manually.
+- **For calculations/statistics → use `analyze_data`**, NOT `search_data`.
+- **Fuzzy column matching**: "yearly therapy costs" → `yearly_price_avg_today_apu`, "benefit rating" → `additional_benefit`.
+- **IMPORTANT for plots**: When `create_plot` succeeds, DO NOT echo `[PLOT_HTML]` tags. The plot displays automatically.
 - Be precise and cite which file the information comes from.
 - Be conversational and helpful.
 """
