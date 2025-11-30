@@ -110,6 +110,7 @@ def read_tabular_file(file_path: str) -> tuple[pd.DataFrame, dict]:
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
 DATABASE_DIR = BASE_DIR / "database"
 FAISS_DIR = DATABASE_DIR / "faiss_store"
+FILES_DIR = DATABASE_DIR / "files"  # Store original files for using with the plot code
 METADATA_FILE = DATABASE_DIR / "csv_metadata.json"
 
 
@@ -117,6 +118,7 @@ def _ensure_dirs():
     """Ensure database directories exist."""
     DATABASE_DIR.mkdir(exist_ok=True)
     FAISS_DIR.mkdir(exist_ok=True)
+    FILES_DIR.mkdir(exist_ok=True)
 
 
 def _load_metadata() -> dict:
@@ -238,6 +240,11 @@ def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
     if filename is None:
         filename = Path(file_path).name
     
+    # Save original file to database
+    import shutil
+    dest_path = FILES_DIR / filename
+    shutil.copy2(file_path, dest_path)
+    
     # Generate description using LLM
     description = _generate_csv_description(df, filename)
     
@@ -282,6 +289,13 @@ def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
     except Exception:
         describe_stats = {"error": "Could not generate statistics"}
     
+    # Get head(5) as sample data
+    try:
+        head_df = df.head(5).fillna("")
+        head_5 = head_df.to_dict(orient='records')
+    except Exception:
+        head_5 = []
+    
     file_metadata = {
         "name": filename,
         "date_ingested": datetime.now().isoformat(),
@@ -291,6 +305,7 @@ def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
         "file_type": file_info.get("type"),
         "delimiter": file_info.get("delimiter"),
         "describe": describe_stats,
+        "head_5": head_5,
     }
     
     if existing_idx is not None:
@@ -341,6 +356,40 @@ def get_vectorstore() -> Optional[FAISS]:
         embeddings,
         allow_dangerous_deserialization=True
     )
+
+
+def load_dataset(filename: str) -> Optional[pd.DataFrame]:
+    """
+    Load a dataset from the stored files.
+    
+    Args:
+        filename: Name of the file to load
+        
+    Returns:
+        DataFrame or None if file not found
+    """
+    file_path = FILES_DIR / filename
+    
+    if not file_path.exists():
+        return None
+    
+    try:
+        df, _ = read_tabular_file(str(file_path))
+        return df
+    except Exception:
+        return None
+
+
+def list_available_files() -> list[str]:
+    """
+    List all available dataset files.
+    
+    Returns:
+        List of filenames
+    """
+    if not FILES_DIR.exists():
+        return []
+    return [f.name for f in FILES_DIR.iterdir() if f.is_file()]
 
 
 def delete_file(filename: str) -> dict:
