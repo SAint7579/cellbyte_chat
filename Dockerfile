@@ -15,6 +15,9 @@ COPY frontend/ .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
+# Create public dir if it doesn't exist (Next.js standalone might not include it)
+RUN mkdir -p /frontend/public
+
 # =============================================================================
 # Stage 2: Final Image
 # =============================================================================
@@ -39,13 +42,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY .env* ./
 
-# Copy built frontend
+# Copy built frontend (standalone output)
 COPY --from=frontend-builder /frontend/.next/standalone ./frontend/
 COPY --from=frontend-builder /frontend/.next/static ./frontend/.next/static
+
+# Copy public folder (might be empty, but won't fail now)
 COPY --from=frontend-builder /frontend/public ./frontend/public
 
-# Create directories
-RUN mkdir -p /app/database /app/history
+# Create directories for persistent data (will be overwritten by volumes)
+RUN mkdir -p /app/database /app/history /app/logs
 
 # Supervisor config
 RUN echo '[supervisord]\n\
@@ -77,4 +82,3 @@ EXPOSE 3000 8000
 
 # Run supervisor
 CMD ["supervisord", "-c", "/etc/supervisor/supervisord.conf"]
-

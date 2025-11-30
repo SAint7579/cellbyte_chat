@@ -10,8 +10,10 @@ services:
       - "3000:3000"  # Frontend
       - "8000:8000"  # Backend API
     volumes:
-      - ./database:/app/database
-      - ./history:/app/history
+      # Persistent storage - data survives container rebuilds
+      - cellbyte_database:/app/database
+      - cellbyte_history:/app/history
+      - cellbyte_logs:/app/logs
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     restart: unless-stopped
@@ -20,3 +22,12 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+# Named volumes persist data across container rebuilds
+volumes:
+  cellbyte_database:
+    name: cellbyte_database
+  cellbyte_history:
+    name: cellbyte_history
+  cellbyte_logs:
+    name: cellbyte_logs

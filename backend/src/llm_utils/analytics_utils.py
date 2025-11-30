@@ -39,8 +39,19 @@ def _execute_analytics_code(code: str, df: pd.DataFrame) -> dict:
     """Execute analytics code and return result dict."""
     import numpy as np
     from scipy import stats
+    import sklearn
+    from sklearn import preprocessing, metrics, cluster
     
-    exec_globals = {"df": df, "pd": pd, "np": np, "stats": stats}
+    exec_globals = {
+        "df": df,
+        "pd": pd,
+        "np": np,
+        "stats": stats,
+        "sklearn": sklearn,
+        "preprocessing": preprocessing,
+        "metrics": metrics,
+        "cluster": cluster,
+    }
     exec_locals = {}
     
     exec(code, exec_globals, exec_locals)

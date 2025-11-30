@@ -12,18 +12,21 @@ langgraph>=0.2.0
 # Vector Store
 faiss-cpu>=1.7.4
 
-# Data Processing
+# Data Processing & Analytics
 pandas>=2.0.0
 numpy>=1.24.0
-openpyxl>=3.1.0  # Excel .xlsx support
-xlrd>=2.0.0  # Excel .xls support
+scipy>=1.11.0           # Statistical analysis (stats, optimize, etc.)
+scikit-learn>=1.3.0     # Machine learning, preprocessing, metrics
 
 # Visualization
 plotly>=5.18.0
+
+# Excel Support
+openpyxl>=3.1.0         # Excel .xlsx support
+xlrd>=2.0.0             # Excel .xls support
 
 # Environment
 python-dotenv>=1.0.0
 
 # HTTP Client (for web search later)
 httpx>=0.25.0
-
