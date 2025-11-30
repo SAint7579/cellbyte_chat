@@ -137,6 +137,7 @@ class CellByteAgent:
 - **Fuzzy column matching**: Match user terms to actual column names flexibly. E.g., "additional benefit ratings" → `additional_benefit`, "brand" → `brand_name`.
 - Use `search_data` when users ask about specific data points or information.
 - Use `create_plot` when users ask for charts, graphs, visualizations, or plots. Pass the exact filename and describe the plot using actual column names.
+- **IMPORTANT for plots**: When `create_plot` returns successfully, DO NOT include or echo the `[PLOT_HTML]` tags in your response. The plot is automatically displayed in the UI. Just confirm the plot was created and optionally summarize the data shown.
 - Be precise and cite which file the information comes from.
 - Be conversational and helpful.
 """

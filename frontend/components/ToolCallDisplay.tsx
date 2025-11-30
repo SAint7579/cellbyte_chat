@@ -21,6 +21,36 @@ export default function ToolCallDisplay({ toolCallMessage, toolResultMessage }: 
     return match ? match[1] : null;
   };
   
+  // Build a full HTML document for the iframe
+  const buildPlotDocument = (plotHtml: string) => {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { 
+      margin: 0; 
+      padding: 0; 
+      background: transparent;
+      overflow: hidden;
+    }
+    .plot-container {
+      width: 100%;
+      min-height: 400px;
+    }
+    .plotly-graph-div {
+      width: 100% !important;
+      height: 450px !important;
+    }
+  </style>
+</head>
+<body>
+  ${plotHtml}
+</body>
+</html>`;
+  };
+  
   return (
     <div className="my-3 mx-4">
       {toolCalls.map((call, idx) => {
@@ -54,10 +84,13 @@ export default function ToolCallDisplay({ toolCallMessage, toolResultMessage }: 
               <div>
                 <div className="text-xs text-gray-500 mb-1">Result:</div>
                 {plotHtml ? (
-                  // Render plot as HTML
-                  <div 
-                    className="bg-black/20 rounded-lg overflow-hidden"
-                    dangerouslySetInnerHTML={{ __html: plotHtml }}
+                  // Render plot in iframe - scripts execute inside iframe
+                  <iframe
+                    srcDoc={buildPlotDocument(plotHtml)}
+                    className="w-full rounded-lg border-0"
+                    style={{ height: '480px', background: 'transparent' }}
+                    sandbox="allow-scripts"
+                    title="Plot visualization"
                   />
                 ) : (
                   // Render text result
