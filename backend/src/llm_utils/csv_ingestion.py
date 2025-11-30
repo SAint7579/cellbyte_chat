@@ -274,9 +274,11 @@ def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
         None
     )
     
-    # Safely get describe stats
+    # Safely get describe stats (replace NaN/Inf with empty string for JSON compatibility)
     try:
-        describe_stats = df.describe(include='all').to_dict()
+        describe_df = df.describe(include='all').fillna("")
+        describe_df = describe_df.replace([float('inf'), float('-inf')], "")
+        describe_stats = describe_df.to_dict()
     except Exception:
         describe_stats = {"error": "Could not generate statistics"}
     
