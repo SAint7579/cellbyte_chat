@@ -8,13 +8,13 @@ A conversational AI chatbot that enables natural language interaction with CSV d
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                              USER INTERFACE                              │
+│                              USER INTERFACE                             │
 └─────────────────────────────────────────────────────────────────────────┘
                                      │
                                      ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         PARENT AGENT (LangGraph)                         │
-│                                                                          │
+│                         PARENT AGENT (LangGraph)                        │
+│                                                                         │
 │  Orchestrates all tools, maintains conversation state, routes queries   │
 └─────────────────────────────────────────────────────────────────────────┘
           │                    │                    │                │
@@ -43,7 +43,7 @@ Each CSV file is processed by a **non-agentic LLM** to generate:
 1. **Vectorstore**: Embeddings for semantic search over CSV content
 2. **Metadata**: Structured context about the file (columns, data types, summary statistics, etc.)
 
-> **Design Choice**: Using a dedicated non-agentic LLM for ingestion ensures consistent, predictable document processing without the overhead of agent reasoning.
+> **Design Choice**: Using a dedicated non-agentic LLM to parase the doc and generate a metadata, that can be used to give the main one more context about the data it fetches. Main question is: How to give LLM a single VecStore with all csv and the context separated? Maybe I pass context through an additional system promtp when the chat is initiated.
 
 ### RAG Tool Architecture
 
@@ -164,6 +164,70 @@ User Interface
 1. **Data stays structured**: CSVs are passed as structured data, not raw text
 2. **Code over calculation**: LLMs generate executable code, not numerical results
 3. **HTML as visualization format**: Universal, embeddable, interactive
+
+---
+
+## Unclear Requirements / Open Questions
+
+### Document Transformation Feature
+
+**Question**: What does "transforming outputs" mean in this context?
+
+Two possible interpretations:
+
+#### Option A: Output Transformation (Post-LLM)
+Converting LLM-generated outputs to different formats without re-parsing the original CSV.
+
+```
+LLM Response (Markdown/HTML Report)
+    │
+    ▼
+Transformation Layer
+    │
+    ├─► PDF → DOCX
+    ├─► Markdown → PDF
+    ├─► Translation (EN → ES, etc.)
+    │
+    ▼
+User receives transformed output
+```
+
+**Use case**: User asks for a report, then requests "give me that as a Word doc" or "translate to Spanish"
+
+#### Option B: Input Parsing (Pre-LLM)
+Converting non-CSV documents INTO parsable structures so the LLM can analyze them.
+
+```
+Non-CSV Document (PDF, DOCX, Images)
+    │
+    ▼
+Marker / Document Parser
+    │
+    ├─► Extracts text, tables, structure
+    ├─► Converts to CSV / structured format
+    │
+    ▼
+Now analyzable by the main pipeline
+```
+
+**Use case**: User uploads a PDF report with tables → system extracts data → LLM can now query it
+
+---
+
+### Two Document Categories
+
+| Category | Description | Processing |
+|----------|-------------|------------|
+| **CSV Docs** | Primary data sources | Direct vectorstore + metadata pipeline |
+| **Non-CSV Docs** | PDFs, DOCX, images with tables | Marker → structured extraction → then standard pipeline |
+
+**Potential Tool**: [Marker](https://github.com/VikParuchuri/marker) for document parsing
+
+**Open Questions**:
+- Do we support both A and B?
+- Should non-CSV docs be first-class citizens or just "converted to CSV"?
+- How to handle mixed documents (PDF with both text narrative AND data tables)?
+- Translation: LLM-based or dedicated translation API?
 
 ---
 
