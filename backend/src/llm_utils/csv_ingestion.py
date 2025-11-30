@@ -6,13 +6,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
+
+# Load .env from project root (override=True to override system env vars)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+load_dotenv(PROJECT_ROOT / ".env", override=True)
+
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from dotenv import load_dotenv
-
-load_dotenv()
 
 
 def _detect_delimiter(file_path: str) -> str:

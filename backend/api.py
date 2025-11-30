@@ -5,19 +5,21 @@ CellByte Chat - FastAPI Backend
 import os
 import tempfile
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from project root BEFORE other imports (override=True to override system env vars)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from dotenv import load_dotenv
 
 # Add src to path for imports
 import sys
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from llm_utils import ingest_csv, get_csv_metadata
-
-load_dotenv()
 
 app = FastAPI(
     title="CellByte Chat API",
