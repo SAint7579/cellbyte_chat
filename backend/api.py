@@ -19,7 +19,7 @@ from pydantic import BaseModel
 import sys
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from llm_utils import ingest_csv, get_csv_metadata
+from llm_utils import ingest_csv, get_csv_metadata, delete_file
 
 app = FastAPI(
     title="CellByte Chat API",
@@ -92,6 +92,36 @@ async def ingest_csv_file(file: UploadFile = File(...)):
         # Clean up temp file
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+@app.delete("/files/{filename}")
+async def delete_csv_file(filename: str):
+    """
+    Delete an ingested file.
+    
+    - Removes metadata from csv_metadata.json
+    - Rebuilds FAISS vectorstore without the file's vectors
+    """
+    try:
+        result = delete_file(filename)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error deleting file: {str(e)}"
+        )
+
+
+@app.get("/files")
+async def list_files():
+    """
+    List all ingested files with their metadata.
+    """
+    metadata = get_csv_metadata()
+    return {"files": metadata.get("files", [])}
+
 
 if __name__ == "__main__":
     import uvicorn

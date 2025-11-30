@@ -340,3 +340,69 @@ def get_vectorstore() -> Optional[FAISS]:
         allow_dangerous_deserialization=True
     )
 
+
+def delete_file(filename: str) -> dict:
+    """
+    Delete a file's metadata and remove its vectors from FAISS.
+    
+    Args:
+        filename: Name of the file to delete
+        
+    Returns:
+        Dict with deletion status
+        
+    Raises:
+        ValueError: If file not found in metadata
+    """
+    metadata = _load_metadata()
+    
+    # Find the file in metadata
+    file_exists = any(f["name"] == filename for f in metadata.get("files", []))
+    
+    if not file_exists:
+        raise ValueError(f"File '{filename}' not found in metadata")
+    
+    # Remove from metadata
+    metadata["files"] = [f for f in metadata["files"] if f["name"] != filename]
+    _save_metadata(metadata)
+    
+    # Rebuild FAISS index without the deleted file's vectors
+    faiss_index_path = FAISS_DIR / "index.faiss"
+    
+    if faiss_index_path.exists():
+        embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
+        vectorstore = FAISS.load_local(
+            str(FAISS_DIR),
+            embeddings,
+            allow_dangerous_deserialization=True
+        )
+        
+        # Get all documents and filter out the deleted file's documents
+        # Note: FAISS doesn't support direct deletion, so we rebuild
+        docstore = vectorstore.docstore
+        index_to_id = vectorstore.index_to_docstore_id
+        
+        remaining_docs = []
+        for idx, doc_id in index_to_id.items():
+            doc = docstore.search(doc_id)
+            if doc and doc.metadata.get("source") != filename:
+                remaining_docs.append(doc)
+        
+        # Delete old index
+        if faiss_index_path.exists():
+            os.unlink(faiss_index_path)
+        pkl_path = FAISS_DIR / "index.pkl"
+        if pkl_path.exists():
+            os.unlink(pkl_path)
+        
+        # Rebuild with remaining documents (if any)
+        if remaining_docs:
+            new_vectorstore = FAISS.from_documents(remaining_docs, embeddings)
+            new_vectorstore.save_local(str(FAISS_DIR))
+    
+    return {
+        "status": "deleted",
+        "name": filename,
+        "remaining_files": len(metadata["files"]),
+    }
+
