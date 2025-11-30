@@ -1,0 +1,23 @@
+# Core Framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
+
+# LangChain
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-community>=0.0.10
+
+# Vector Store
+faiss-cpu>=1.7.4
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Environment
+python-dotenv>=1.0.0
+
+# HTTP Client (for web search later)
+httpx>=0.25.0
+
