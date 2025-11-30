@@ -7,10 +7,11 @@ import ToolCallDisplay from './ToolCallDisplay';
 
 interface MessageBubbleProps {
   message: ChatMessage;
-  nextMessage?: ChatMessage;
+  allMessages: ChatMessage[];  // Full message array to find tool results
+  messageIndex: number;        // Index of this message
 }
 
-export default function MessageBubble({ message, nextMessage }: MessageBubbleProps) {
+export default function MessageBubble({ message, allMessages, messageIndex }: MessageBubbleProps) {
   // Don't render tool messages directly - they're shown in ToolCallDisplay
   if (message.role === 'tool') {
     return null;
@@ -18,8 +19,17 @@ export default function MessageBubble({ message, nextMessage }: MessageBubblePro
   
   // If this is an assistant message with tool_calls, show the tool call display
   if (message.role === 'assistant' && message.tool_calls && message.tool_calls.length > 0) {
-    const toolResult = nextMessage?.role === 'tool' ? nextMessage : undefined;
-    return <ToolCallDisplay toolCallMessage={message} toolResultMessage={toolResult} />;
+    // Collect all consecutive tool messages that follow this assistant message
+    const toolResults: ChatMessage[] = [];
+    for (let i = messageIndex + 1; i < allMessages.length; i++) {
+      if (allMessages[i].role === 'tool') {
+        toolResults.push(allMessages[i]);
+      } else {
+        break; // Stop at first non-tool message
+      }
+    }
+    
+    return <ToolCallDisplay toolCallMessage={message} toolResults={toolResults} />;
   }
   
   // Skip empty assistant messages (these come before tool calls)

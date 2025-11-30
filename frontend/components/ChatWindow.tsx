@@ -72,7 +72,8 @@ export default function ChatWindow({ messages, onMessagesUpdate }: ChatWindowPro
               <MessageBubble 
                 key={idx} 
                 message={msg} 
-                nextMessage={messages[idx + 1]}
+                allMessages={messages}
+                messageIndex={idx}
               />
             ))}
             {isLoading && (

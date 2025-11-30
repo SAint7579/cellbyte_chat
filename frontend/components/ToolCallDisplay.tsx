@@ -4,11 +4,16 @@ import { ChatMessage } from '@/lib/types';
 
 interface ToolCallDisplayProps {
   toolCallMessage: ChatMessage;
-  toolResultMessage?: ChatMessage;
+  toolResults: ChatMessage[];  // Array of tool result messages
 }
 
-export default function ToolCallDisplay({ toolCallMessage, toolResultMessage }: ToolCallDisplayProps) {
+export default function ToolCallDisplay({ toolCallMessage, toolResults }: ToolCallDisplayProps) {
   const toolCalls = toolCallMessage.tool_calls || [];
+  
+  // Find the result for a specific tool call by ID
+  const getResultForToolCall = (toolCallId: string): ChatMessage | undefined => {
+    return toolResults.find(result => result.tool_call_id === toolCallId);
+  };
   
   // Check if the result contains a plot HTML
   const isPlotResult = (content: string) => {
@@ -54,8 +59,10 @@ export default function ToolCallDisplay({ toolCallMessage, toolResultMessage }: 
   return (
     <div className="my-3 mx-4">
       {toolCalls.map((call, idx) => {
-        const isPlot = toolResultMessage && isPlotResult(toolResultMessage.content);
-        const plotHtml = isPlot ? extractPlotHtml(toolResultMessage.content) : null;
+        // Find the matching result for THIS specific tool call
+        const toolResult = getResultForToolCall(call.id);
+        const isPlot = toolResult && isPlotResult(toolResult.content);
+        const plotHtml = isPlot ? extractPlotHtml(toolResult.content) : null;
         
         return (
           <div key={call.id || idx} className="tool-call-block rounded-lg p-4 mb-2">
@@ -80,7 +87,7 @@ export default function ToolCallDisplay({ toolCallMessage, toolResultMessage }: 
             </div>
             
             {/* Result */}
-            {toolResultMessage && (
+            {toolResult && (
               <div>
                 <div className="text-xs text-gray-500 mb-1">Result:</div>
                 {plotHtml ? (
@@ -96,7 +103,7 @@ export default function ToolCallDisplay({ toolCallMessage, toolResultMessage }: 
                   // Render text result
                   <div className="bg-black/30 rounded p-2 font-mono text-xs text-gray-400 max-h-40 overflow-y-auto">
                     <pre className="whitespace-pre-wrap break-words">
-                      {toolResultMessage.content}
+                      {toolResult.content}
                     </pre>
                   </div>
                 )}
