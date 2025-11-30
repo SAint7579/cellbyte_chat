@@ -68,6 +68,7 @@ async def ingest_csv_file(file: UploadFile = File(...)):
             detail="Only CSV files are supported"
         )
     
+    tmp_path = None
     try:
         # Save uploaded file to temp location
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp:
@@ -78,9 +79,6 @@ async def ingest_csv_file(file: UploadFile = File(...)):
         # Ingest the CSV
         result = ingest_csv(tmp_path, filename=file.filename)
         
-        # Clean up temp file
-        os.unlink(tmp_path)
-        
         return IngestResponse(**result)
     
     except Exception as e:
@@ -88,6 +86,10 @@ async def ingest_csv_file(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Error ingesting CSV: {str(e)}"
         )
+    finally:
+        # Clean up temp file
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
 
 if __name__ == "__main__":
     import uvicorn
