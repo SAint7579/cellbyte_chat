@@ -37,6 +37,7 @@ def _clean_code(code: str) -> str:
 
 def _execute_analytics_code(code: str, df: pd.DataFrame) -> dict:
     """Execute analytics code and return result dict."""
+    import re
     import numpy as np
     from scipy import stats
     import sklearn
@@ -46,6 +47,7 @@ def _execute_analytics_code(code: str, df: pd.DataFrame) -> dict:
         "df": df,
         "pd": pd,
         "np": np,
+        "re": re,           # Regular expressions
         "stats": stats,
         "sklearn": sklearn,
         "preprocessing": preprocessing,
