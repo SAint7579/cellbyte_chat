@@ -1,15 +1,19 @@
+import os
 from pathlib import Path
 from typing import Optional
 from dotenv import load_dotenv
+
+# Fix OpenMP conflict with FAISS on Windows
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 # Load .env from project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
-from langgraph.prebuilt import create_react_agent
+from langgraph.prebuilt import create_react_agent ## Makes this a bit hardcoded on how the agent flow works. Could be replaced with a custom graph and tool call handler in the future if needed. The flow is better than create_tool_calling_agent though.
 
 from llm_utils.csv_ingestion import get_vectorstore, get_csv_metadata
 
@@ -52,7 +56,7 @@ class CellByteAgent:
         self.agent = create_react_agent(
             self.llm,
             tools=[rag_tool],
-            state_modifier=self.system_prompt,
+            prompt=self.system_prompt,
         )
     
     def _build_system_prompt(self) -> str:
@@ -66,7 +70,7 @@ class CellByteAgent:
                 files_list.append(f"{i}. **{f['name']}**\n   {f['description']}")
             files_context = "\n\n".join(files_list)
         
-        return f"""You are CellByte, an intelligent data assistant that helps users explore and analyze CSV data.
+        return f"""You are CellByte's AI agent, an intelligent data assistant that helps users explore and analyze CSV data.
 
                 ## Available Data Files
 
@@ -88,7 +92,7 @@ class CellByteAgent:
                 """
     
     def _create_rag_tool(self):
-        """Create the RAG search tool."""
+        """Create the RAG search tool. This is added as a function in case the user adds files in the middle of the chat."""
         
         @tool
         def search_data(query: str) -> str:
@@ -125,28 +129,44 @@ class CellByteAgent:
         
         return search_data
     
-    def chat(self, message: str, history: Optional[list[dict]] = None) -> str:
+    def chat(self, message: str, history: Optional[list[dict]] = None) -> tuple[str, list[dict]]:
         """
         Send a message to the agent and get a response.
         
         Args:
             message: The user's message
             history: Optional list of previous messages in format:
-                    [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
+                    [
+                        {"role": "user", "content": "..."},
+                        {"role": "assistant", "content": "...", "tool_calls": [...]},
+                        {"role": "tool", "tool_call_id": "...", "content": "..."},
+                        ...
+                    ]
                     
         Returns:
-            The agent's response string
+            Tuple of (response_string, updated_history)
         """
-        # Build messages list
+        # Build messages list from history
         messages = []
         
-        # Add history if provided
         if history:
             for msg in history:
                 if msg["role"] == "user":
                     messages.append(HumanMessage(content=msg["content"]))
                 elif msg["role"] == "assistant":
-                    messages.append(AIMessage(content=msg["content"]))
+                    # Reconstruct AIMessage with tool_calls if present
+                    if msg.get("tool_calls"):
+                        messages.append(AIMessage(
+                            content=msg.get("content", ""),
+                            tool_calls=msg["tool_calls"]
+                        ))
+                    else:
+                        messages.append(AIMessage(content=msg["content"]))
+                elif msg["role"] == "tool":
+                    messages.append(ToolMessage(
+                        content=msg["content"],
+                        tool_call_id=msg["tool_call_id"]
+                    ))
         
         # Add current message
         messages.append(HumanMessage(content=message))
@@ -154,9 +174,28 @@ class CellByteAgent:
         # Invoke the agent
         result = self.agent.invoke({"messages": messages})
         
-        # Extract the final response
+        # Build updated history from all new messages (skip messages already in history)
+        new_history = history.copy() if history else []
+        start_idx = len(messages) - 1  # Start from the new user message
+        
+        for msg in result["messages"][start_idx:]:
+            if isinstance(msg, HumanMessage):
+                new_history.append({"role": "user", "content": msg.content})
+            elif isinstance(msg, AIMessage):
+                entry = {"role": "assistant", "content": msg.content}
+                if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                    entry["tool_calls"] = msg.tool_calls
+                new_history.append(entry)
+            elif isinstance(msg, ToolMessage):
+                new_history.append({
+                    "role": "tool",
+                    "tool_call_id": msg.tool_call_id,
+                    "content": msg.content
+                })
+        
+        # Extract final response
         final_message = result["messages"][-1]
-        return final_message.content
+        return final_message.content, new_history
     
     def refresh_metadata(self):
         """Reload metadata from csv_metadata.json and rebuild system prompt."""
@@ -166,12 +205,28 @@ class CellByteAgent:
             for f in full_metadata.get("files", [])
         ]
         self.system_prompt = self._build_system_prompt()
-        
+        # Might need a way of storing different system messagess for debugging, since this cannot go in the chat history now.
         # Recreate agent with new system prompt
         rag_tool = self._create_rag_tool()
         self.agent = create_react_agent(
             self.llm,
             tools=[rag_tool],
-            state_modifier=self.system_prompt,
+            prompt=self.system_prompt,
         )
 
+
+if __name__ == "__main__":
+    agent = CellByteAgent()
+    history = []
+    
+    while True:
+        try:
+            user_input = input("You: ").strip()
+            if not user_input:
+                continue
+            
+            response, history = agent.chat(user_input, history=history)
+            print(f"Agent: {response}\n")
+            
+        except KeyboardInterrupt:
+            break
