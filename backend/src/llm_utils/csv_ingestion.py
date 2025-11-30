@@ -1,5 +1,6 @@
 import os
 import json
+import csv
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -12,6 +13,95 @@ from langchain_core.documents import Document
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+def _detect_delimiter(file_path: str) -> str:
+    """
+    Detect the delimiter used in a CSV/TSV file.
+    
+    Args:
+        file_path: Path to the file
+        
+    Returns:
+        Detected delimiter character (defaults to ',' if detection fails)
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            sample = f.read(8192)
+            sniffer = csv.Sniffer()
+            dialect = sniffer.sniff(sample, delimiters=',;\t|')
+            return dialect.delimiter
+    except Exception:
+        return ','
+
+
+def read_tabular_file(file_path: str) -> tuple[pd.DataFrame, dict]:
+    """
+    Read a tabular file (CSV, TSV, Excel) and return DataFrame with file info.
+    
+    Supports:
+    - CSV files (.csv) with auto-detected delimiters (, ; | \\t)
+    - TSV files (.tsv, .txt with tabs)
+    - Excel files (.xlsx, .xls)
+    
+    Args:
+        file_path: Path to the tabular file
+        
+    Returns:
+        Tuple of (DataFrame, file_info dict with 'type' and 'delimiter')
+        
+    Raises:
+        ValueError: If file type is not supported
+    """
+    path = Path(file_path)
+    extension = path.suffix.lower()
+    
+    file_info = {
+        "type": None,
+        "delimiter": None,
+        "extension": extension,
+    }
+    
+    # Excel files
+    if extension in ['.xlsx', '.xls']:
+        try:
+            # Try reading first sheet by default
+            df = pd.read_excel(file_path, engine='openpyxl' if extension == '.xlsx' else 'xlrd')
+            file_info["type"] = "excel"
+            return df, file_info
+        except Exception as e:
+            raise ValueError(f"Failed to read Excel file: {str(e)}")
+    
+    # TSV files (explicit .tsv extension)
+    if extension == '.tsv':
+        df = pd.read_csv(file_path, delimiter='\t')
+        file_info["type"] = "tsv"
+        file_info["delimiter"] = '\t'
+        return df, file_info
+    
+    # CSV and other text-based files - auto-detect delimiter
+    if extension in ['.csv', '.txt', '']:
+        delimiter = _detect_delimiter(file_path)
+        df = pd.read_csv(file_path, delimiter=delimiter)
+        
+        # Determine type based on delimiter
+        if delimiter == '\t':
+            file_info["type"] = "tsv"
+        else:
+            file_info["type"] = "csv"
+        file_info["delimiter"] = delimiter
+        
+        return df, file_info
+    
+    # Unsupported extension - try as CSV anyway
+    try:
+        delimiter = _detect_delimiter(file_path)
+        df = pd.read_csv(file_path, delimiter=delimiter)
+        file_info["type"] = "csv"
+        file_info["delimiter"] = delimiter
+        return df, file_info
+    except Exception as e:
+        raise ValueError(f"Unsupported file type '{extension}': {str(e)}")
 
 # Paths
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
@@ -49,40 +139,50 @@ def _generate_csv_description(df: pd.DataFrame, filename: str) -> str:
         filename: Name of the CSV file
         
     Returns:
-        Generated description string
+        Generated description string, or error message if generation fails
     """
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    
-    # Build a summary of the data for the LLM
-    csv_summary = f"""
-    Filename: {filename}
-    Shape: {df.shape[0]} rows × {df.shape[1]} columns
+    try:
+        llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        
+        # Build a summary of the data for the LLM
+        # Safely get statistics
+        try:
+            stats_str = df.describe(include='all').to_string()
+        except Exception:
+            stats_str = "Could not generate statistics"
+        
+        csv_summary = f"""
+Filename: {filename}
+Shape: {df.shape[0]} rows × {df.shape[1]} columns
 
-    Columns and Types:
-    {df.dtypes.to_string()}
+Columns and Types:
+{df.dtypes.to_string()}
 
-    Sample Data (first 5 rows):
-    {df.head().to_string()}
+Sample Data (first 5 rows):
+{df.head().to_string()}
 
-    Basic Statistics:
-    {df.describe(include='all').to_string()}
-    """
+Basic Statistics:
+{stats_str}
+"""
         
         prompt = f"""You are a data analyst. Analyze this CSV file and provide a concise but comprehensive description.
 
-    Include:
-    1. What this dataset appears to contain (domain/subject)
-    2. Key columns and what they represent
-    3. Data quality observations (missing values, data types)
-    4. Potential use cases for this data
+Include:
+1. What this dataset appears to contain (domain/subject)
+2. Key columns and what they represent
+3. Data quality observations (missing values, data types)
+4. Potential use cases for this data
 
-    CSV Summary:
-    {csv_summary}
+CSV Summary:
+{csv_summary}
 
-    Provide a clear, structured description in 2-3 paragraphs."""
+Provide a clear, structured description in 2-3 paragraphs."""
 
-    response = llm.invoke(prompt)
-    return response.content
+        response = llm.invoke(prompt)
+        return response.content
+    
+    except Exception as e:
+        return f"[Auto-generated description failed: {str(e)}] File contains {len(df)} rows and {len(df.columns)} columns: {', '.join(df.columns.tolist())}"
 
 
 def _csv_to_documents(df: pd.DataFrame, filename: str) -> list[Document]:
@@ -115,12 +215,12 @@ def _csv_to_documents(df: pd.DataFrame, filename: str) -> list[Document]:
     return documents
 
 
-def ingest_csv(file_path: str, filename: Optional[str] = None) -> dict:
+def ingest_file(file_path: str, filename: Optional[str] = None) -> dict:
     """
-    Ingest a CSV file: generate description, store in FAISS, save metadata.
+    Ingest a tabular file (CSV, TSV, Excel): generate description, store in FAISS, save metadata.
     
     Args:
-        file_path: Path to the CSV file
+        file_path: Path to the file (CSV, TSV, XLSX, XLS)
         filename: Optional custom name (defaults to file basename)
         
     Returns:
@@ -128,8 +228,8 @@ def ingest_csv(file_path: str, filename: Optional[str] = None) -> dict:
     """
     _ensure_dirs()
     
-    # Read the CSV
-    df = pd.read_csv(file_path)
+    # Read the file with auto-detection
+    df, file_info = read_tabular_file(file_path)
     
     # Determine filename
     if filename is None:
@@ -171,13 +271,21 @@ def ingest_csv(file_path: str, filename: Optional[str] = None) -> dict:
         None
     )
     
+    # Safely get describe stats
+    try:
+        describe_stats = df.describe(include='all').to_dict()
+    except Exception:
+        describe_stats = {"error": "Could not generate statistics"}
+    
     file_metadata = {
         "name": filename,
         "date_ingested": datetime.now().isoformat(),
         "description": description,
         "row_count": len(df),
         "columns": list(df.columns),
-        "describe": df.describe(include='all').to_dict(),
+        "file_type": file_info.get("type"),
+        "delimiter": file_info.get("delimiter"),
+        "describe": describe_stats,
     }
     
     if existing_idx is not None:
@@ -192,7 +300,12 @@ def ingest_csv(file_path: str, filename: Optional[str] = None) -> dict:
         "name": filename,
         "description": description,
         "rows_indexed": len(documents),
+        "file_type": file_info.get("type"),
     }
+
+
+# Backward-compatible alias
+ingest_csv = ingest_file
 
 
 def get_csv_metadata() -> dict:
