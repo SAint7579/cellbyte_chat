@@ -90,3 +90,23 @@ body {
   animation-delay: 0.4s;
 }
 
+/* Prose/Markdown Styling */
+.prose {
+  line-height: 1.6;
+}
+
+.prose code {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.prose pre code {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.prose hr {
+  border-color: var(--border);
+  margin: 1rem 0;
+}
+

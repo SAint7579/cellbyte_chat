@@ -44,6 +44,10 @@ tags_metadata = [
         "name": "Files",
         "description": "File ingestion and management",
     },
+    {
+        "name": "History",
+        "description": "Chat history management",
+    },
 ]
 
 app = FastAPI(
@@ -279,6 +283,91 @@ async def delete_csv_file(filename: str):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error deleting file: {str(e)}")
+
+
+# =============================================================================
+# History Endpoints
+# =============================================================================
+
+HISTORY_DIR = PROJECT_ROOT / "history"
+HISTORY_DIR.mkdir(exist_ok=True)
+
+
+class ChatHistoryModel(BaseModel):
+    """A saved chat history."""
+    id: str
+    title: str
+    created_at: str
+    updated_at: str
+    messages: list
+
+
+@app.get("/history", tags=["History"])
+async def list_histories():
+    """
+    List all saved chat histories.
+    """
+    import json
+    histories = []
+    
+    for file in HISTORY_DIR.glob("*.json"):
+        try:
+            with open(file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                histories.append({
+                    "id": data.get("id"),
+                    "title": data.get("title", "Untitled"),
+                    "created_at": data.get("created_at"),
+                    "updated_at": data.get("updated_at"),
+                })
+        except Exception:
+            continue
+    
+    histories.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
+    return histories
+
+
+@app.get("/history/{history_id}", tags=["History"])
+async def get_history(history_id: str):
+    """
+    Get a specific chat history by ID.
+    """
+    import json
+    file_path = HISTORY_DIR / f"{history_id}.json"
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="History not found")
+    
+    with open(file_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+@app.put("/history/{history_id}", tags=["History"])
+async def save_history(history_id: str, history: ChatHistoryModel):
+    """
+    Save or update a chat history.
+    """
+    import json
+    file_path = HISTORY_DIR / f"{history_id}.json"
+    
+    with open(file_path, 'w', encoding='utf-8') as f:
+        json.dump(history.model_dump(), f, indent=2, ensure_ascii=False)
+    
+    return {"status": "saved", "id": history_id}
+
+
+@app.delete("/history/{history_id}", tags=["History"])
+async def delete_history(history_id: str):
+    """
+    Delete a chat history.
+    """
+    file_path = HISTORY_DIR / f"{history_id}.json"
+    
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="History not found")
+    
+    file_path.unlink()
+    return {"status": "deleted", "id": history_id}
 
 
 # =============================================================================
