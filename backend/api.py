@@ -46,8 +46,8 @@ class MetadataResponse(BaseModel):
     files: list
 
 
-@app.get("/")
-async def root():
+@app.get("/healthz")
+async def healthz():
     """Health check endpoint."""
     return {"status": "ok", "message": "CellByte Chat API is running"}
 
@@ -88,43 +88,6 @@ async def ingest_csv_file(file: UploadFile = File(...)):
             status_code=500,
             detail=f"Error ingesting CSV: {str(e)}"
         )
-
-
-@app.get("/metadata", response_model=MetadataResponse)
-async def get_metadata():
-    """
-    Get metadata for all ingested CSV files.
-    """
-    metadata = get_csv_metadata()
-    return MetadataResponse(files=metadata.get("files", []))
-
-
-@app.delete("/metadata/{filename}")
-async def delete_csv_metadata(filename: str):
-    """
-    Delete metadata for a specific CSV file.
-    
-    Note: This only removes the metadata entry, not the vectors from FAISS.
-    Full deletion would require rebuilding the vectorstore.
-    """
-    metadata = get_csv_metadata()
-    
-    # Find and remove the file
-    original_count = len(metadata.get("files", []))
-    metadata["files"] = [f for f in metadata.get("files", []) if f["name"] != filename]
-    
-    if len(metadata["files"]) == original_count:
-        raise HTTPException(
-            status_code=404,
-            detail=f"File '{filename}' not found in metadata"
-        )
-    
-    # Save updated metadata
-    from llm_utils.csv_ingestion import _save_metadata
-    _save_metadata(metadata)
-    
-    return {"status": "deleted", "name": filename}
-
 
 if __name__ == "__main__":
     import uvicorn

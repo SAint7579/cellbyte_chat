@@ -177,6 +177,7 @@ def ingest_csv(file_path: str, filename: Optional[str] = None) -> dict:
         "description": description,
         "row_count": len(df),
         "columns": list(df.columns),
+        "describe": df.describe(include='all').to_dict(),
     }
     
     if existing_idx is not None:
