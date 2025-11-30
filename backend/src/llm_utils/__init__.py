@@ -4,8 +4,10 @@ from .csv_ingestion import (
     get_csv_metadata,
     read_tabular_file,
     delete_file,
+    load_dataset,
+    list_available_files,
 )
-from .tools import search_data, ALL_TOOLS
+from .tools import search_data, create_plot, ALL_TOOLS
 
 __all__ = [
     "ingest_file",
@@ -13,6 +15,9 @@ __all__ = [
     "get_csv_metadata", 
     "read_tabular_file", 
     "delete_file",
+    "load_dataset",
+    "list_available_files",
     "search_data",
+    "create_plot",
     "ALL_TOOLS",
 ]

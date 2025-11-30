@@ -34,6 +34,21 @@ export interface ChatHistory {
   messages: ChatMessage[];
 }
 
+// Helper to safely parse error responses
+async function parseErrorResponse(res: Response): Promise<string> {
+  try {
+    const text = await res.text();
+    try {
+      const json = JSON.parse(text);
+      return json.detail || json.message || text;
+    } catch {
+      return text || `Error ${res.status}`;
+    }
+  } catch {
+    return `Error ${res.status}`;
+  }
+}
+
 // Chat API
 export async function sendMessage(message: string, history: ChatMessage[] = []): Promise<ChatResponse> {
   const res = await fetch(`${API_BASE}/chat`, {
@@ -43,8 +58,8 @@ export async function sendMessage(message: string, history: ChatMessage[] = []):
   });
   
   if (!res.ok) {
-    const error = await res.json();
-    throw new Error(error.detail || 'Failed to send message');
+    const error = await parseErrorResponse(res);
+    throw new Error(error);
   }
   
   return res.json();
@@ -52,7 +67,10 @@ export async function sendMessage(message: string, history: ChatMessage[] = []):
 
 export async function refreshAgent(): Promise<void> {
   const res = await fetch(`${API_BASE}/chat/refresh`, { method: 'POST' });
-  if (!res.ok) throw new Error('Failed to refresh agent');
+  if (!res.ok) {
+    const error = await parseErrorResponse(res);
+    throw new Error(error);
+  }
 }
 
 // Files API
@@ -66,8 +84,8 @@ export async function uploadFile(file: File): Promise<{ name: string; descriptio
   });
   
   if (!res.ok) {
-    const error = await res.json();
-    throw new Error(error.detail || 'Failed to upload file');
+    const error = await parseErrorResponse(res);
+    throw new Error(error);
   }
   
   return res.json();
@@ -75,7 +93,10 @@ export async function uploadFile(file: File): Promise<{ name: string; descriptio
 
 export async function listFiles(): Promise<{ files: FileMetadata[] }> {
   const res = await fetch(`${API_BASE}/files`);
-  if (!res.ok) throw new Error('Failed to list files');
+  if (!res.ok) {
+    const error = await parseErrorResponse(res);
+    throw new Error(error);
+  }
   return res.json();
 }
 
@@ -83,10 +104,13 @@ export async function deleteFile(filename: string): Promise<void> {
   const res = await fetch(`${API_BASE}/files/${encodeURIComponent(filename)}`, {
     method: 'DELETE',
   });
-  if (!res.ok) throw new Error('Failed to delete file');
+  if (!res.ok) {
+    const error = await parseErrorResponse(res);
+    throw new Error(error);
+  }
 }
 
-// History API (local storage + file based)
+// History API
 export async function listChatHistories(): Promise<ChatHistory[]> {
   const res = await fetch(`${API_BASE}/history`);
   if (!res.ok) return [];
@@ -110,4 +134,3 @@ export async function saveChatHistory(history: ChatHistory): Promise<void> {
 export async function deleteChatHistory(id: string): Promise<void> {
   await fetch(`${API_BASE}/history/${id}`, { method: 'DELETE' });
 }
-
