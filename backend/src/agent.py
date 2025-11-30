@@ -12,10 +12,10 @@ load_dotenv(PROJECT_ROOT / ".env", override=True)
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
-from langchain_core.tools import tool
-from langgraph.prebuilt import create_react_agent ## Makes this a bit hardcoded on how the agent flow works. Could be replaced with a custom graph and tool call handler in the future if needed. The flow is better than create_tool_calling_agent though.
+from langgraph.prebuilt import create_react_agent
 
-from llm_utils.csv_ingestion import get_vectorstore, get_csv_metadata
+from llm_utils.csv_ingestion import get_csv_metadata
+from llm_utils.tools import search_data
 
 
 class CellByteAgent:
@@ -46,16 +46,16 @@ class CellByteAgent:
         self.metadata = metadata
         self.system_prompt = self._build_system_prompt()
         
-        # Create the RAG tool
-        rag_tool = self._create_rag_tool()
-        
         # Create the LLM
         self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        
+        # Tools available to the agent
+        self.tools = [search_data]
         
         # Create the ReAct agent
         self.agent = create_react_agent(
             self.llm,
-            tools=[rag_tool],
+            tools=self.tools,
             prompt=self.system_prompt,
         )
     
@@ -90,44 +90,6 @@ class CellByteAgent:
                 - For calculations or analytics, describe what analysis would be needed (analytics tools coming soon).
                 - Be conversational and helpful.
                 """
-    
-    def _create_rag_tool(self):
-        """Create the RAG search tool. This is added as a function in case the user adds files in the middle of the chat."""
-        
-        @tool
-        def search_data(query: str) -> str:
-            """
-            Search the CSV data for relevant information.
-            
-            Use this tool to find specific data points, rows, or information
-            from the ingested CSV files.
-            
-            Args:
-                query: The search query describing what data to find
-                
-            Returns:
-                Relevant data from the CSV files
-            """
-            vectorstore = get_vectorstore()
-            
-            if vectorstore is None:
-                return "No data has been ingested yet. Please upload CSV files first."
-            
-            # Search for relevant documents
-            docs = vectorstore.similarity_search(query, k=5)
-            
-            if not docs:
-                return "No relevant data found for your query."
-            
-            # Format results
-            results = []
-            for doc in docs:
-                source = doc.metadata.get("source", "Unknown")
-                results.append(f"[From {source}]: {doc.page_content}")
-            
-            return "\n\n".join(results)
-        
-        return search_data
     
     def chat(self, message: str, history: Optional[list[dict]] = None) -> tuple[str, list[dict]]:
         """
@@ -205,12 +167,11 @@ class CellByteAgent:
             for f in full_metadata.get("files", [])
         ]
         self.system_prompt = self._build_system_prompt()
-        # Might need a way of storing different system messagess for debugging, since this cannot go in the chat history now.
+        
         # Recreate agent with new system prompt
-        rag_tool = self._create_rag_tool()
         self.agent = create_react_agent(
             self.llm,
-            tools=[rag_tool],
+            tools=self.tools,
             prompt=self.system_prompt,
         )
 
